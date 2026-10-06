@@ -7,7 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const WellControlApp());
 }
@@ -18,13 +18,57 @@ class WellControlApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Well Control Assets',
+      title: 'Well Control Asset Manager',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blueGrey,
         useMaterial3: true,
       ),
       home: const HomeScreen(),
+    );
+  }
+}
+
+class Asset {
+  final int? id;
+  final String name;
+  final String serialNumber;
+  final String category;
+  final String status;
+  final String lastOverhaulDate;
+  final String overhaulDueDate;
+
+  Asset({
+    this.id,
+    required this.name,
+    required this.serialNumber,
+    required this.category,
+    required this.status,
+    required this.lastOverhaulDate,
+    required this.overhaulDueDate,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'serialNumber': serialNumber,
+      'category': category,
+      'status': status,
+      'lastOverhaulDate': lastOverhaulDate,
+      'overhaulDueDate': overhaulDueDate,
+    };
+  }
+
+  factory Asset.fromMap(Map<String, dynamic> map) {
+    return Asset(
+      id: map['id'],
+      name: map['name'],
+      serialNumber: map['serialNumber'],
+      category: map['category'],
+      status: map['status'],
+      lastOverhaulDate: map['lastOverhaulDate'],
+      overhaulDueDate: map['overhaulDueDate'],
     );
   }
 }
@@ -44,49 +88,56 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = p.join(dbPath, filePath);
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+
+    return await openDatabase(
+      path,
+      version: 1,
+      onCreate: _createDB,
+    );
   }
 
   Future _createDB(Database db, int version) async {
     await db.execute('''
-      CREATE TABLE equipment (
+      CREATE TABLE assets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        rigNumber TEXT NOT NULL,
-        equipmentName TEXT NOT NULL,
-        serialNumber TEXT NOT NULL UNIQUE,
-        assetNumber TEXT NOT NULL,
+        name TEXT NOT NULL,
+        serialNumber TEXT NOT NULL,
+        category TEXT NOT NULL,
+        status TEXT NOT NULL,
         lastOverhaulDate TEXT NOT NULL,
-        overhaulDueDate TEXT NOT NULL,
-        history TEXT
+        overhaulDueDate TEXT NOT NULL
       )
     ''');
   }
 
-  Future<int> insertEquipment(Map<String, dynamic> row) async {
+  Future<int> create(Asset asset) async {
     final db = await instance.database;
-    return await db.insert('equipment', row, conflictAlgorithm: ConflictAlgorithm.replace);
+    return await db.insert('assets', asset.toMap());
   }
 
-  Future<int> updateEquipment(int id, Map<String, dynamic> row) async {
+  Future<List<Asset>> readAllAssets() async {
     final db = await instance.database;
-    return await db.update('equipment', row, where: 'id = ?', whereArgs: [id]);
+    final result = await db.query('assets', orderBy: 'id DESC');
+    return result.map((json) => Asset.fromMap(json)).toList();
   }
 
-  Future<List<Map<String, dynamic>>> searchByRig(String rigNumber) async {
+  Future<int> update(Asset asset) async {
     final db = await instance.database;
-    return await db.query('equipment', where: 'rigNumber LIKE ?', whereArgs: ['%$rigNumber%']);
+    return db.update(
+      'assets',
+      asset.toMap(),
+      where: 'id = ?',
+      whereArgs: [asset.id],
+    );
   }
 
-  Future<Map<String, dynamic>?> getBySerial(String serialNumber) async {
+  Future<int> delete(int id) async {
     final db = await instance.database;
-    final results = await db.query('equipment', where: 'serialNumber = ?', whereArgs: [serialNumber]);
-    if (results.isNotEmpty) return results.first;
-    return null;
-  }
-
-  Future<List<Map<String, dynamic>>> getAllEquipment() async {
-    final db = await instance.database;
-    return await db.query('equipment');
+    return await db.delete(
+      'assets',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 }
 
@@ -98,239 +149,193 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final _searchController = TextEditingController();
-  List<Map<String, dynamic>> _searchResults = [];
-  bool _searched = false;
+  List<Asset> _assets = [];
+  List<Asset> _filteredAssets = [];
+  bool _isLoading = true;
+  final TextEditingController _searchController = TextEditingController();
 
-  void _performSearch(String query) async {
-    if (query.trim().isEmpty) return;
-    
-    final rigResults = await DatabaseHelper.instance.searchByRig(query.trim());
-    if (rigResults.isNotEmpty) {
-      setState(() {
-        _searchResults = rigResults;
-        _searched = true;
-      });
-    } else {
-      final serialResult = await DatabaseHelper.instance.getBySerial(query.trim());
-      setState(() {
-        _searchResults = serialResult != null ? [serialResult] : [];
-        _searched = true;
-      });
+  @override
+  void initState() {
+    super.initState();
+    _refreshAssets();
+  }
+
+  Future<void> _refreshAssets() async {
+    setState(() => _isLoading = true);
+    _assets = await DatabaseHelper.instance.readAllAssets();
+    _filteredAssets = _assets;
+    setState(() => _isLoading = false);
+  }
+
+  void _filterAssets(String query) {
+    setState(() {
+      _filteredAssets = _assets
+          .where((asset) =>
+              asset.name.toLowerCase().contains(query.toLowerCase()) ||
+              asset.serialNumber.toLowerCase().contains(query.toLowerCase()) ||
+              asset.category.toLowerCase().contains(query.toLowerCase()))
+          .toList();
+    });
+  }
+
+  String _calculateDueDate(String startDateStr) {
+    try {
+      DateTime startDate = DateFormat('yyyy-MM-dd').parse(startDateStr);
+      DateTime dueDate = DateTime(startDate.year + 5, startDate.month, startDate.day);
+      return DateFormat('yyyy-MM-dd').format(dueDate);
+    } catch (e) {
+      return startDateStr;
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Well Control Asset Manager'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: 'إضافة معدة جديدة',
-            onPressed: () => _openEquipmentForm(context),
-          )
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: const InputDecoration(
-                      labelText: 'ابحث برقم البريمة (Rig) أو السريال (Serial)',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.search),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: () => _performSearch(_searchController.text),
-                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.all(16)),
-                  child: const Text('بحث'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            
-            if (_searchResults.isNotEmpty)
-              ElevatedButton.icon(
-                icon: const Icon(Icons.picture_as_pdf),
-                label: const Text('تصدير التقرير PDF'),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
-                onPressed: () => _generateAndPrintPDF(_searchResults, _searchController.text),
-              ),
-
-            const SizedBox(height: 16),
-
-            Expanded(
-              child: _searchResults.isEmpty
-                  ? Center(child: Text(_searched ? 'لا توجد نتائج بحث' : 'قم بالبحث أو اضغط + لإضافة معدة جديدة'))
-                  : ListView.builder(
-                      itemCount: _searchResults.length,
-                      itemBuilder: (context, index) {
-                        final item = _searchResults[index];
-                        return Card(
-                          margin: const EdgeInsets.symmetric(vertical: 8),
-                          child: ListTile(
-                            title: Text('${item['equipmentName']} (Rig: ${item['rigNumber']})', style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text('S/N: ${item['serialNumber']} | Asset: ${item['assetNumber']}\nDue: ${item['overhaulDueDate']}'),
-                            isThreeLine: true,
-                            trailing: IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.blue),
-                              onPressed: () => _openEquipmentForm(context, item: item),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openEquipmentForm(context),
-        icon: const Icon(Icons.add),
-        label: const Text('إضافة معدة'),
-      ),
+  void _showAssetDialog({Asset? asset}) {
+    final nameController = TextEditingController(text: asset?.name ?? '');
+    final serialController = TextEditingController(text: asset?.serialNumber ?? '');
+    final categoryController = TextEditingController(text: asset?.category ?? '');
+    final statusController = TextEditingController(text: asset?.status ?? 'Active');
+    final lastOverhaulController = TextEditingController(
+      text: asset?.lastOverhaulDate ?? DateFormat('yyyy-MM-dd').format(DateTime.now()),
     );
-  }
-
-  void _openEquipmentForm(BuildContext context, {Map<String, dynamic>? item}) {
-    final rigController = TextEditingController(text: item?['rigNumber']);
-    final nameController = TextEditingController(text: item?['equipmentName']);
-    final serialController = TextEditingController(text: item?['serialNumber']);
-    final assetController = TextEditingController(text: item?['assetNumber']);
-    final lastOverhaulController = TextEditingController(text: item?['lastOverhaulDate']);
-    final dueOverhaulController = TextEditingController(text: item?['overhaulDueDate']);
-    final historyController = TextEditingController(text: item?['history']);
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(item == null ? 'إضافة معدة جديدة' : 'تعديل بيانات المعدة'),
+      builder: (context) => AlertDialog(
+        title: Text(asset == null ? 'Add New Asset' : 'Edit Asset'),
         content: SingleChildScrollView(
           child: Column(
-            mainAxisSize: min,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: rigController, decoration: const InputDecoration(labelText: 'Rig Number')),
               TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Equipment Name')),
               TextField(controller: serialController, decoration: const InputDecoration(labelText: 'Serial Number')),
-              TextField(controller: assetController, decoration: const InputDecoration(labelText: 'Asset Number')),
+              TextField(controller: categoryController, decoration: const InputDecoration(labelText: 'Category (BOP, Valve, etc.)')),
+              TextField(controller: statusController, decoration: const InputDecoration(labelText: 'Status')),
               TextField(
-                controller: lastOverhaulController, 
+                controller: lastOverhaulController,
                 decoration: const InputDecoration(labelText: 'Last Overhaul Date (YYYY-MM-DD)'),
-              ),
-              TextField(
-                controller: dueOverhaulController, 
-                decoration: const InputDecoration(labelText: 'Overhaul Due Date (YYYY-MM-DD)'),
-              ),
-              TextField(
-                controller: historyController, 
-                maxLines: 3, 
-                decoration: const InputDecoration(labelText: 'History / Maintenance Log'),
               ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () async {
-              final data = {
-                'rigNumber': rigController.text,
-                'equipmentName': nameController.text,
-                'serialNumber': serialController.text,
-                'assetNumber': assetController.text,
-                'lastOverhaulDate': lastOverhaulController.text,
-                'overhaulDueDate': dueOverhaulController.text,
-                'history': historyController.text,
-              };
+              final calculatedDueDate = _calculateDueDate(lastOverhaulController.text);
+              final newAsset = Asset(
+                id: asset?.id,
+                name: nameController.text,
+                serialNumber: serialController.text,
+                category: categoryController.text,
+                status: statusController.text,
+                lastOverhaulDate: lastOverhaulController.text,
+                overhaulDueDate: calculatedDueDate,
+              );
 
-              if (item == null) {
-                await DatabaseHelper.instance.insertEquipment(data);
+              if (asset == null) {
+                await DatabaseHelper.instance.create(newAsset);
               } else {
-                await DatabaseHelper.instance.updateEquipment(item['id'], data);
+                await DatabaseHelper.instance.update(newAsset);
               }
 
-              if (mounted) {
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم الحفظ بنجاح!')));
-                if (_searchController.text.isNotEmpty) {
-                  _performSearch(_searchController.text);
-                }
-              }
+              if (mounted) Navigator.pop(context);
+              _refreshAssets();
             },
-            child: const Text('حفظ'),
+            child: const Text('Save'),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _generateAndPrintPDF(List<Map<String, dynamic>> data, String searchQuery) async {
+  Future<void> _generatePdfReport() async {
     final pdf = pw.Document();
 
     pdf.addPage(
       pw.Page(
-        pageFormat: PdfPageFormat.a4,
         build: (pw.Context context) {
           return pw.Column(
-            cross: pw.CrossAxisAlignment.start,
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Header(
                 level: 0,
-                child: pw.Row(
-                  main: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Text('WELL CONTROL EQUIPMENT REPORT', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-                    pw.Text(DateFormat('yyyy-MM-dd').format(DateTime.now())),
-                  ],
-                ),
+                child: pw.Text('Well Control Asset Status Report', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
               ),
               pw.SizedBox(height: 10),
-              pw.Text('Search Query / Reference: $searchQuery', style: const pw.TextStyle(fontSize: 12)),
+              pw.Text('Generated Date: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}'),
               pw.SizedBox(height: 20),
-
-              pw.Table.fromTextArray(
-                headers: ['Rig', 'Equipment Name', 'Serial No.', 'Asset No.', 'Last Overhaul', 'Due Date'],
-                data: data.map((e) => [
-                  e['rigNumber'],
-                  e['equipmentName'],
-                  e['serialNumber'],
-                  e['assetNumber'],
-                  e['lastOverhaulDate'],
-                  e['overhaulDueDate'],
-                ]).toList(),
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey),
-                cellAlignment: pw.Alignment.centerLeft,
+              pw.TableHelper.fromTextArray(
+                headers: ['Name', 'Serial No', 'Category', 'Status', 'Last Overhaul', 'Due Date'],
+                data: _assets.map((a) => [a.name, a.serialNumber, a.category, a.status, a.lastOverhaulDate, a.overhaulDueDate]).toList(),
               ),
-
-              pw.SizedBox(height: 20),
-              if (data.length == 1) ...[
-                pw.Text('Detailed Equipment History:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
-                pw.SizedBox(height: 5),
-                pw.Container(
-                  padding: const pw.EdgeInsets.all(10),
-                  decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey)),
-                  child: pw.Text(data.first['history'] ?? 'No history recorded.'),
-                ),
-              ],
             ],
           );
         },
       ),
     );
 
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdf.save(),
+    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Well Control Assets'),
+        actions: [
+          IconButton(icon: const Icon(Icons.picture_as_pdf), onPressed: _generatePdfReport),
+        ],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: const InputDecoration(
+                labelText: 'Search Equipment or Serial No',
+                prefixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
+              ),
+              onChanged: _filterAssets,
+            ),
+          ),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : ListView.builder(
+                    itemCount: _filteredAssets.length,
+                    itemBuilder: (context, index) {
+                      final asset = _filteredAssets[index];
+                      return Card(
+                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        child: ListTile(
+                          title: Text(asset.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text('SN: ${asset.serialNumber} | Category: ${asset.category}\nDue: ${asset.overhaulDueDate}'),
+                          isThreeLine: true,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showAssetDialog(asset: asset)),
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                onPressed: () async {
+                                  await DatabaseHelper.instance.delete(asset.id!);
+                                  _refreshAssets();
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showAssetDialog(),
+        child: const Icon(Icons.add),
+      ),
     );
   }
 }
