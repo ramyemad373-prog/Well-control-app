@@ -97,7 +97,7 @@ class DatabaseHelper {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('well_control_v4.db');
+    _database = await _initDB('well_control_v5.db');
     return _database!;
   }
 
@@ -311,33 +311,101 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _generatePdfReport() async {
     final pdf = pw.Document();
 
+    List<Map<String, dynamic>> assetsWithImages = [];
+
+    for (var asset in _filteredAssets) {
+      pw.MemoryImage? certImage;
+      if (asset.imagePath != null && asset.imagePath!.isNotEmpty) {
+        final file = File(asset.imagePath!);
+        if (await file.exists()) {
+          final imageBytes = await file.readAsBytes();
+          certImage = pw.MemoryImage(imageBytes);
+        }
+      }
+      assetsWithImages.add({
+        'asset': asset,
+        'image': certImage,
+      });
+    }
+
     pdf.addPage(
-      pw.Page(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
         build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Header(
-                level: 0,
-                child: pw.Text('Well Control Asset Status Report', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
+          return [
+            pw.Header(
+              level: 0,
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('BOP Well Control Asset & Recertification Report',
+                      style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+                  pw.Text('Date: ${DateFormat('yyyy-MM-dd').format(DateTime.now())}',
+                      style: const pw.TextStyle(fontSize: 10)),
+                ],
               ),
-              pw.SizedBox(height: 10),
-              pw.Text('Generated Date: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}'),
-              pw.SizedBox(height: 20),
-              pw.TableHelper.fromTextArray(
-                headers: ['Name', 'Serial No', 'Rig No', 'Category', 'Status', 'Last Overhaul', 'Due Date'],
-                data: _filteredAssets.map((a) => [
-                  a.name,
-                  a.serialNumber,
-                  a.rigNumber,
-                  a.category,
-                  a.status,
-                  a.lastOverhaulDate,
-                  a.overhaulDueDate,
-                ]).toList(),
-              ),
-            ],
-          );
+            ),
+            pw.SizedBox(height: 10),
+
+            // جدول ملخص المعدات مع تفاصيل الـ History
+            pw.TableHelper.fromTextArray(
+              headers: ['Name', 'Serial No', 'Rig No', 'Category', 'Due Date', 'History / Notes'],
+              data: _filteredAssets.map((a) => [
+                a.name,
+                a.serialNumber,
+                a.rigNumber,
+                a.category,
+                a.overhaulDueDate,
+                a.historyNotes.isEmpty ? '-' : a.historyNotes,
+              ]).toList(),
+            ),
+
+            pw.SizedBox(height: 20),
+            pw.Divider(),
+            pw.SizedBox(height: 10),
+
+            // قسم الشهادات والسجل التاريخي لكل معدة
+            pw.Text('Attached Certificates & Maintenance Logs:',
+                style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 10),
+
+            ...assetsWithImages.map((item) {
+              final Asset asset = item['asset'];
+              final pw.MemoryImage? image = item['image'];
+
+              return pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 15),
+                padding: const pw.EdgeInsets.all(10),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey400),
+                  borderRadius: pw.BorderRadius.circular(6),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Equipment: ${asset.name} (SN: ${asset.serialNumber} | Rig: ${asset.rigNumber})',
+                        style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
+                    pw.SizedBox(height: 4),
+                    if (asset.historyNotes.isNotEmpty) ...[
+                      pw.Text('History / Notes: ${asset.historyNotes}',
+                          style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey800)),
+                      pw.SizedBox(height: 8),
+                    ],
+                    if (image != null)
+                      pw.Container(
+                        height: 220,
+                        child: pw.Center(
+                          child: pw.Image(image, fit: pw.BoxFit.contain),
+                        ),
+                      )
+                    else
+                      pw.Text('No Certificate Image Attached',
+                          style: const pw.TextStyle(color: PdfColors.red, fontSize: 10)),
+                  ],
+                ),
+              );
+            }).toList(),
+          ];
         },
       ),
     );
@@ -455,7 +523,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Equipment Name & Action Buttons
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -487,7 +554,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                // Rig Tag
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                   decoration: BoxDecoration(
