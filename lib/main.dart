@@ -22,8 +22,11 @@ class WellControlApp extends StatelessWidget {
       title: 'Well Control Asset Manager',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.blueGrey,
         useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF1E3A8A),
+          brightness: Brightness.dark,
+        ),
       ),
       home: const HomeScreen(),
     );
@@ -94,7 +97,7 @@ class DatabaseHelper {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('well_control_v2.db');
+    _database = await _initDB('well_control_v3.db');
     return _database!;
   }
 
@@ -221,7 +224,11 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text(asset == null ? 'Add New Asset' : 'Edit Asset'),
+          backgroundColor: const Color(0xFF1E293B),
+          title: Text(
+            asset == null ? 'Add New Asset' : 'Edit Asset',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -240,10 +247,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   maxLines: 2,
                   decoration: const InputDecoration(labelText: 'Maintenance History & Notes'),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 ElevatedButton.icon(
-                  icon: const Icon(Icons.image),
-                  label: Text(selectedImagePath == null ? 'Attach Certificate Image' : 'Change Certificate Image'),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0EA5E9)),
+                  icon: const Icon(Icons.verified, color: Colors.white),
+                  label: Text(
+                    selectedImagePath == null ? 'Attach Certificate' : 'Change Certificate',
+                    style: const TextStyle(color: Colors.white),
+                  ),
                   onPressed: () async {
                     final picker = ImagePicker();
                     final image = await picker.pickImage(source: ImageSource.gallery);
@@ -255,15 +266,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                 ),
                 if (selectedImagePath != null) ...[
-                  const SizedBox(height: 5),
-                  const Text('Image Attached ✔️', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  const Text('Certificate Attached ✔️', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
                 ]
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
               onPressed: () async {
                 final calculatedDueDate = _calculateDueDate(lastOverhaulController.text);
                 final newAsset = Asset(
@@ -288,7 +300,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (mounted) Navigator.pop(context);
                 _refreshAssets();
               },
-              child: const Text('Save'),
+              child: const Text('Save Asset', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -336,73 +348,178 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Well Control Assets'),
-        actions: [
-          IconButton(icon: const Icon(Icons.picture_as_pdf), onPressed: _generatePdfReport),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: TextField(
-              controller: _searchController,
-              decoration: const InputDecoration(
-                labelText: 'Search by Equipment, Serial No, or Rig No',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-              ),
-              onChanged: _filterAssets,
-            ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF0F172A), Color(0xFF1E293B), Color(0xFF0F172A)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    itemCount: _filteredAssets.length,
-                    itemBuilder: (context, index) {
-                      final asset = _filteredAssets[index];
-                      return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        child: ListTile(
-                          title: Text('${asset.name} (Rig: ${asset.rigNumber})', style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('SN: ${asset.serialNumber} | Cat: ${asset.category}'),
-                              Text('Last: ${asset.lastOverhaulDate} | Due: ${asset.overhaulDueDate}', style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-                              if (asset.historyNotes.isNotEmpty)
-                                Text('History: ${asset.historyNotes}', style: const TextStyle(fontStyle: FontStyle.italic)),
-                            ],
-                          ),
-                          isThreeLine: true,
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.edit, color: Colors.blue),
-                                onPressed: () => _showAssetDialog(asset: asset),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red),
-                                onPressed: () async {
-                                  await DatabaseHelper.instance.delete(asset.id!);
-                                  _refreshAssets();
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Custom Header with BOP Logo Design
+              Container(
+                padding: const EdgeInsets.all(16.0),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E3A8A).withOpacity(0.4),
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(20),
+                    bottomRight: Radius.circular(20),
                   ),
+                  border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.blueAccent.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.blueAccent, width: 2),
+                      ),
+                      child: const Icon(Icons.precision_manufacturing, color: Colors.cyanAccent, size: 32),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            'BOP WELL CONTROL',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.2, color: Colors.cyanAccent),
+                          ),
+                          Text(
+                            'Asset & Recertification Manager',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.picture_as_pdf, color: Colors.amberAccent, size: 28),
+                      onPressed: _generatePdfReport,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Search Input
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+                child: TextField(
+                  controller: _searchController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Search Equipment, Serial No, or Rig No...',
+                    hintStyle: const TextStyle(color: Colors.grey),
+                    prefixIcon: const Icon(IconData(0xe567, fontFamily: 'MaterialIcons'), color: Colors.cyanAccent),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.05),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: BorderSide(color: Colors.blueAccent.withOpacity(0.3)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: BorderSide(color: Colors.blueAccent.withOpacity(0.2)),
+                    ),
+                  ),
+                  onChanged: _filterAssets,
+                ),
+              ),
+              // Asset List
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator(color: Colors.cyanAccent))
+                    : ListView.builder(
+                        itemCount: _filteredAssets.length,
+                        itemBuilder: (context, index) {
+                          final asset = _filteredAssets[index];
+                          return Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1E293B).withOpacity(0.8),
+                              borderRadius: BorderRadius.circular(15),
+                              border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 3),
+                                )
+                              ],
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              title: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      asset.name,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blueAccent.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text('Rig: ${asset.rigNumber}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                                  )
+                                ],
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 6),
+                                  Text('SN: ${asset.serialNumber} | Cat: ${asset.category}', style: const TextStyle(color: Colors.grey)),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.event_repeat, color: Colors.amberAccent, size: 16),
+                                      const SizedBox(width: 4),
+                                      Text('Due: ${asset.overhaulDueDate}', style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                  if (asset.historyNotes.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text('History: ${asset.historyNotes}', style: const TextStyle(color: Colors.grey, fontStyle: FontStyle.italic, fontSize: 12)),
+                                  ]
+                                ],
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit, color: Colors.cyanAccent),
+                                    onPressed: () => _showAssetDialog(asset: asset),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
+                                    onPressed: () async {
+                                      await DatabaseHelper.instance.delete(asset.id!);
+                                      _refreshAssets();
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: const Color(0xFF0EA5E9),
         onPressed: () => _showAssetDialog(),
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text('Add Asset', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
   }
