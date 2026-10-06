@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart0io';
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
@@ -97,7 +97,7 @@ class DatabaseHelper {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('well_control_v3.db');
+    _database = await _initDB('well_control_v4.db');
     return _database!;
   }
 
@@ -359,7 +359,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: SafeArea(
           child: Column(
             children: [
-              // Custom Header with BOP Logo Design
+              // Header
               Container(
                 padding: const EdgeInsets.all(16.0),
                 decoration: BoxDecoration(
@@ -414,7 +414,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   decoration: InputDecoration(
                     hintText: 'Search Equipment, Serial No, or Rig No...',
                     hintStyle: const TextStyle(color: Colors.grey),
-                    prefixIcon: const Icon(IconData(0xe567, fontFamily: 'MaterialIcons'), color: Colors.cyanAccent),
+                    prefixIcon: const Icon(Icons.search, color: Colors.cyanAccent),
                     filled: true,
                     fillColor: Colors.white.withOpacity(0.05),
                     border: OutlineInputBorder(
@@ -439,6 +439,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           final asset = _filteredAssets[index];
                           return Container(
                             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                            padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
                               color: const Color(0xFF1E293B).withOpacity(0.8),
                               borderRadius: BorderRadius.circular(15),
@@ -451,61 +452,69 @@ class _HomeScreenState extends State<HomeScreen> {
                                 )
                               ],
                             ),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              title: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      asset.name,
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Equipment Name & Action Buttons
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        asset.name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 17,
+                                          color: Colors.white,
+                                        ),
+                                      ),
                                     ),
+                                    IconButton(
+                                      constraints: const BoxConstraints(),
+                                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                                      icon: const Icon(Icons.edit, color: Colors.cyanAccent, size: 22),
+                                      onPressed: () => _showAssetDialog(asset: asset),
+                                    ),
+                                    IconButton(
+                                      constraints: const BoxConstraints(),
+                                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                                      icon: const Icon(Icons.delete_forever, color: Colors.redAccent, size: 22),
+                                      onPressed: () async {
+                                        await DatabaseHelper.instance.delete(asset.id!);
+                                        _refreshAssets();
+                                      },
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                // Rig Tag
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blueAccent.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.cyanAccent.withOpacity(0.3)),
                                   ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blueAccent.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text('Rig: ${asset.rigNumber}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 12, fontWeight: FontWeight.bold)),
-                                  )
-                                ],
-                              ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
+                                  child: Text(
+                                    'Rig: ${asset.rigNumber}',
+                                    style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Text('SN: ${asset.serialNumber} | Cat: ${asset.category}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.event_repeat, color: Colors.amberAccent, size: 16),
+                                    const SizedBox(width: 4),
+                                    Text('Due: ${asset.overhaulDueDate}', style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                                  ],
+                                ),
+                                if (asset.historyNotes.isNotEmpty) ...[
                                   const SizedBox(height: 6),
-                                  Text('SN: ${asset.serialNumber} | Cat: ${asset.category}', style: const TextStyle(color: Colors.grey)),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.event_repeat, color: Colors.amberAccent, size: 16),
-                                      const SizedBox(width: 4),
-                                      Text('Due: ${asset.overhaulDueDate}', style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold)),
-                                    ],
-                                  ),
-                                  if (asset.historyNotes.isNotEmpty) ...[
-                                    const SizedBox(height: 4),
-                                    Text('History: ${asset.historyNotes}', style: const TextStyle(color: Colors.grey, fontStyle: FontStyle.italic, fontSize: 12)),
-                                  ]
+                                  Text('History: ${asset.historyNotes}', style: const TextStyle(color: Colors.grey, fontStyle: FontStyle.italic, fontSize: 12)),
                                 ],
-                              ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.edit, color: Colors.cyanAccent),
-                                    onPressed: () => _showAssetDialog(asset: asset),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
-                                    onPressed: () async {
-                                      await DatabaseHelper.instance.delete(asset.id!);
-                                      _refreshAssets();
-                                    },
-                                  ),
-                                ],
-                              ),
+                              ],
                             ),
                           );
                         },
