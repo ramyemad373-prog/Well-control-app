@@ -23,6 +23,10 @@ jobs:
         with:
           channel: 'stable'
 
+      - name: Re-create Flutter Android Structure
+        run: |
+          flutter create --platforms=android .
+
       - name: Install dependencies
         run: flutter pub get
 
